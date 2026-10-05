@@ -155,9 +155,9 @@ def ood_filter(
     K: Tensor,  # [..., 3, 3]
     W: int,  
     H: int,
-    xg_thresh: float = 0.01,
-    nx: int = 10,
-    ny: int = 10,
+    xg_thresh: float = 1e-4,
+    nx: int = 100,
+    ny: int = 100,
     near_plane: float = 0.01,
 ) -> Tuple[Tensor, Tensor]:
     """

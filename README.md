@@ -1,3 +1,83 @@
+# Pre-Render Filtering of Unstable Gaussians for Improved Extreme View Synthesis in 3D Gaussian Splatting
+
+**Sebastian Teuttli** · Honors Thesis, Barrett, The Honors College at Arizona State University (2026) · Advised by Dr. Heni Ben Amor
+
+[Project Page](https://sebastianteu.github.io/gaussian-filtering) · [Thesis PDF](https://sebastianteu.github.io/gaussian-filtering/static/thesis.pdf)
+
+> The exact code used for the thesis results is preserved at tag [`thesis-submission`](https://github.com/SebastianTeu/gsplat-ood-filter/tree/thesis-submission). The `ood_filter` branch may include later cleanups (e.g. default values and output-path handling).
+
+3D Gaussian Splatting renders novel views in real time, but renders from camera poses far outside the training distribution are often obscured by noisy, unstable Gaussians. This fork of [gsplat](https://github.com/nerfstudio-project/gsplat) adds an offline, pre-render filter inspired by [EV3DGS](https://arxiv.org/abs/2510.20027) (Bowness and Poullis, 2025). Instead of scoring Gaussians every frame, cameras are sampled once from PCA-aligned ellipsoids fitted to the scene, a grid of rays is cast from each camera, and a custom gsplat CUDA kernel evaluates an EV3DGS-style sensitivity metric (with hit depth computed in each Gaussian's rotation-only local space) for every Gaussian a ray hits. Gaussians whose rejection ratio exceeds a threshold are pruned and a new checkpoint is written, so the renderer itself is unchanged and keeps its real-time performance.
+
+### Files added / modified
+
+| File | Status | Purpose |
+| --- | --- | --- |
+| `ood_filter/gaussian_filter.py` | added | CLI: PCA ellipsoid fitting, camera sampling, look-at view matrices, rejection-ratio pruning, writes the filtered checkpoint |
+| `gsplat/cuda/csrc/OODfilterCUDA.cu` | added | CUDA kernel (one thread per ray): ray–Gaussian intersection and instability scoring |
+| `gsplat/cuda/csrc/OODfilter.cpp` | added | Host-side entry point that allocates the count tensors and launches the kernel |
+| `gsplat/cuda/csrc/OODfilter.h` | added | Kernel launcher declaration |
+| `gsplat/cuda/include/Ops.h` | modified | Declares `gsplat::ood_filter` |
+| `gsplat/cuda/ext.cpp` | modified | Registers the `ood_filter` Python binding |
+| `gsplat/cuda/_wrapper.py` | modified | Python wrapper `gsplat.cuda._wrapper.ood_filter(...)` returning `(reject_counts, total_counts)` |
+
+### Usage
+
+**1. Install from source.** The filter's CUDA kernel is only in this fork, so the PyPI `gsplat` package will not work. Install [PyTorch](https://pytorch.org/get-started/locally/) first, then:
+
+```bash
+git clone --recursive https://github.com/SebastianTeu/gsplat-ood-filter.git
+cd gsplat-ood-filter
+pip install -e .
+pip install -r examples/requirements.txt   # for training / viewing
+```
+
+**2. Train a scene** with gsplat's simple trainer (the thesis used the default strategy for 30,000 iterations on COLMAP-format data, without downscaling). This writes `results/<scene>/ckpts/ckpt_29999_rank0.pt`:
+
+```bash
+cd examples
+python simple_trainer.py default --data_dir <path/to/colmap/scene> --data_factor 1 --result_dir results/<scene>
+cd ..
+```
+
+**3. Run the filter** on the checkpoint (run from the repository root):
+
+```bash
+python ood_filter/gaussian_filter.py --ckpt examples/results/<scene>/ckpts/ckpt_29999_rank0.pt
+```
+
+The filtered checkpoint is saved next to the input with the parameters encoded in its name, e.g.
+`ckpt_29999_rank0_ood_count-<N>_xg-0.0001_ratio-0.25_pca-0.9_slices-5x6_ellipsoids-2.0-4.0.pt`.
+It contains only the `splats` dictionary (`means`, `quats`, `scales`, `opacities`, `sh0`, `shN`).
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--ckpt` | *(required)* | Path to the input `.pt` checkpoint |
+| `--xg_thresh` | `1e-4` | Sensitivity threshold τ<sub>xg</sub>; a hit scoring above it is marked unstable |
+| `--ratio_thresh` | `0.25` | Rejection-ratio threshold τ<sub>ratio</sub>; Gaussians above it are pruned |
+| `--nx`, `--ny` | `100`, `100` | Ray grid per synthetic camera |
+| `--pca_percentile` | `0.9` | Percentile of the projected Gaussian means used for the base ellipsoid radii |
+| `--ellipsoid_scalars` | `2.0 4.0` | One or more multipliers on the base radii; cameras are sampled on each scaled ellipsoid |
+| `--num_slices` | `5` | Slices along the ellipsoid's minor axis (poles excluded) |
+| `--num_cameras_per_slice` | `6` | Cameras evenly spaced around each slice, all looking at the scene center |
+| `--near_plane` | 5% of the smallest base radius | Hits closer than this are ignored |
+
+These defaults are the parameters used for all results in the thesis (Chapter 6).
+
+**4. View the filtered scene** with gsplat's viewer:
+
+```bash
+cd examples
+python simple_viewer.py --ckpt <path/to/filtered>.pt --port 8080
+```
+
+> Note: `examples/simple_trainer.py --ckpt` expects a `step` key in the checkpoint, which the filtered checkpoint does not contain, so use `simple_viewer.py` (or load the `splats` dict yourself) for filtered scenes.
+
+The filter can also be called from Python via `compute_instability_mask(...)` in `ood_filter/gaussian_filter.py`, or per camera via `gsplat.cuda._wrapper.ood_filter(...)`.
+
+---
+
+## Original gsplat README
+
 # gsplat
 
 [![Core Tests.](https://github.com/nerfstudio-project/gsplat/actions/workflows/core_tests.yml/badge.svg?branch=main)](https://github.com/nerfstudio-project/gsplat/actions/workflows/core_tests.yml)

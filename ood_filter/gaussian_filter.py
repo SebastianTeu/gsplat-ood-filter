@@ -1,5 +1,6 @@
 import math
 import argparse
+from pathlib import Path
 
 from gsplat.cuda._wrapper import (
     ood_filter,
@@ -247,15 +248,17 @@ def main(local_rank: int, world_rank: int, world_size: int, args):
     print("Number of Gaussians after filter:", len(filtered_means))
 
     # Saving the filtered Gaussians back to a new checkpoint
-    output_ckpt_path = args.ckpt.replace(
-        ".pt",
+    ckpt_path = Path(args.ckpt)
+    output_ckpt_path = ckpt_path.with_name(
+        f"{ckpt_path.stem}"
         f"_ood"
         f"_count-{len(filtered_means)}"
         f"_xg-{args.xg_thresh:g}"
         f"_ratio-{args.ratio_thresh:g}"
         f"_pca-{args.pca_percentile:g}"
         f"_slices-{args.num_slices}x{args.num_cameras_per_slice}"
-        f"_ellipsoids-{'-'.join(map(str, args.ellipsoid_scalars))}.pt"
+        f"_ellipsoids-{'-'.join(map(str, args.ellipsoid_scalars))}"
+        f"{ckpt_path.suffix}"
     )
 
     torch.save({
@@ -273,7 +276,7 @@ def main(local_rank: int, world_rank: int, world_size: int, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--ckpt", type=str, required=True, default=None, help="path to the .pt file"
+        "--ckpt", type=str, required=True, help="path to the .pt file"
     )
     parser.add_argument(
         "--xg_thresh", type=float, default=1e-4, help="threshold for Gaussian instability"
