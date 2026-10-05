@@ -47,7 +47,7 @@ python ood_filter/gaussian_filter.py --ckpt examples/results/<scene>/ckpts/ckpt_
 
 The filtered checkpoint is saved next to the input with the parameters encoded in its name, e.g.
 `ckpt_29999_rank0_ood_count-<N>_xg-0.0001_ratio-0.25_pca-0.9_slices-5x6_ellipsoids-2.0-4.0.pt`.
-It contains only the `splats` dictionary (`means`, `quats`, `scales`, `opacities`, `sh0`, `shN`).
+Only the `splats` entries (`means`, `quats`, `scales`, `opacities`, `sh0`, `shN`) are filtered; all other entries of the input checkpoint (e.g. `step`) are copied over unchanged, so the filtered file can be used anywhere the original checkpoint can.
 
 | Flag | Default | Description |
 | --- | --- | --- |
@@ -63,14 +63,20 @@ It contains only the `splats` dictionary (`means`, `quats`, `scales`, `opacities
 
 These defaults are the parameters used for all results in the thesis (Chapter 6).
 
-**4. View the filtered scene** with gsplat's viewer:
+**4. View or render the filtered scene.** Interactively, with gsplat's viewer:
 
 ```bash
 cd examples
 python simple_viewer.py --ckpt <path/to/filtered>.pt --port 8080
 ```
 
-> Note: `examples/simple_trainer.py --ckpt` expects a `step` key in the checkpoint, which the filtered checkpoint does not contain, so use `simple_viewer.py` (or load the `splats` dict yourself) for filtered scenes.
+Or with the simple trainer in evaluation mode, which skips training, evaluates on the scene's validation views, and renders a trajectory video (use the same `--data_dir` / `--data_factor` as for training, and a separate `--result_dir` so the unfiltered results are not overwritten):
+
+```bash
+cd examples
+python simple_trainer.py default --data_dir <path/to/colmap/scene> --data_factor 1 \
+    --result_dir results/<scene>_filtered --ckpt <path/to/filtered>.pt
+```
 
 The filter can also be called from Python via `compute_instability_mask(...)` in `ood_filter/gaussian_filter.py`, or per camera via `gsplat.cuda._wrapper.ood_filter(...)`.
 

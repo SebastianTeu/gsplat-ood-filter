@@ -206,7 +206,8 @@ def main(local_rank: int, world_rank: int, world_size: int, args):
     torch.manual_seed(42)
     device = torch.device("cuda", local_rank)
 
-    ckpt = torch.load(args.ckpt, map_location=device)["splats"]
+    full_ckpt = torch.load(args.ckpt, map_location=device)
+    ckpt = full_ckpt["splats"]
 
     means       = ckpt["means"]
     quats       = F.normalize(ckpt["quats"], p=2, dim=-1)
@@ -261,7 +262,10 @@ def main(local_rank: int, world_rank: int, world_size: int, args):
         f"{ckpt_path.suffix}"
     )
 
+    # Carry over all non-splat entries (e.g. "step", "pose_adjust", "post_processing") so the
+    # filtered checkpoint can be loaded anywhere the original can, e.g. simple_trainer.py --ckpt
     torch.save({
+        **{k: v for k, v in full_ckpt.items() if k != "splats"},
         "splats": {
             "means": filtered_means,
             "quats": filtered_quats,
